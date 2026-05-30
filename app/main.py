@@ -2,6 +2,7 @@
 Production-Ready RAG API
 LangChain + HuggingFace + ChromaDB
 """
+from fastapi.staticfiles import StaticFiles
 
 import time
 import uuid
@@ -38,7 +39,7 @@ app = FastAPI(
     description="Production-Ready RAG API using LangChain + HuggingFace + ChromaDB",
     lifespan=lifespan,
 )
-
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
