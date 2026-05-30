@@ -1,8 +1,3 @@
-"""
-Ingestion service — handles text splitting and document preparation
-before handing off to the vector store.
-"""
-
 import hashlib
 from pathlib import Path
 from typing import List
@@ -18,9 +13,34 @@ logger = get_logger(__name__)
 
 
 def _make_doc_id(content: str, metadata: dict) -> str:
-    """Deterministic ID so re-ingesting the same doc is idempotent."""
     payload = content + str(sorted(metadata.items()))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _load_pdf(path: str) -> str:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        text = "\n\n".join([page.extract_text() or "" for page in reader.pages])
+        logger.info("pdf_loaded", pages=len(reader.pages))
+        return text
+    except ImportError:
+        raise ImportError("Run: pip install pypdf")
+
+
+def _load_docx(path: str) -> str:
+    try:
+        import docx
+        doc = docx.Document(path)
+        text = "\n\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        logger.info("docx_loaded", paragraphs=len(doc.paragraphs))
+        return text
+    except ImportError:
+        raise ImportError("Run: pip install python-docx")
+
+
+def _load_text(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
 
 
 class IngestionService:
@@ -33,57 +53,34 @@ class IngestionService:
         )
         self.vs_manager = VectorStoreManager()
 
-    # ── Public interface ──────────────────────────────────────────────────────
-
-    def ingest_texts(
-        self,
-        texts: List[str],
-        metadatas: List[dict] | None = None,
-    ) -> dict:
-        """
-        Split raw texts → chunks → embed → store.
-        Returns summary dict with chunk count and assigned IDs.
-        """
+    def ingest_texts(self, texts: List[str], metadatas: List[dict] | None = None) -> dict:
         if metadatas is None:
             metadatas = [{} for _ in texts]
-
         if len(texts) != len(metadatas):
             raise ValueError("texts and metadatas must have the same length.")
 
-        # Build raw documents
-        raw_docs = [
-            Document(page_content=text, metadata=meta)
-            for text, meta in zip(texts, metadatas)
-        ]
-
-        # Split
+        raw_docs = [Document(page_content=t, metadata=m) for t, m in zip(texts, metadatas)]
         chunks = self.splitter.split_documents(raw_docs)
-        logger.info("Text split into chunks", raw_docs=len(raw_docs), chunks=len(chunks))
-
-        # Assign deterministic IDs
-        ids = [_make_doc_id(c.page_content, c.metadata) for c in chunks]
-
-        # Store
+        logger.info("text_split", raw_docs=len(raw_docs), chunks=len(chunks))
         stored_ids = self.vs_manager.add_documents(chunks)
+        return {"raw_document_count": len(raw_docs), "chunk_count": len(chunks), "stored_ids": stored_ids}
 
-        return {
-            "raw_document_count": len(raw_docs),
-            "chunk_count": len(chunks),
-            "stored_ids": stored_ids,
-        }
-
-    def ingest_file(self, file_path: str | Path, extra_metadata: dict | None = None) -> dict:
-        """
-        Read a plain-text file and ingest it.
-        For PDFs / Word docs, swap in the relevant LangChain loader.
-        """
+    def ingest_file(self, file_path: str, original_filename: str | None = None, ext: str | None = None, extra_metadata: dict | None = None) -> dict:
         path = Path(file_path)
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        ext = ext or path.suffix.lower()
+        name = original_filename or path.name
 
-        text = path.read_text(encoding="utf-8")
-        metadata = {"source": str(path), "filename": path.name}
+        loaders = {".pdf": _load_pdf, ".docx": _load_docx, ".txt": _load_text, ".md": _load_text}
+        if ext not in loaders:
+            raise ValueError(f"Unsupported file type: {ext}")
+
+        text = loaders[ext](str(path))
+        if not text.strip():
+            raise ValueError(f"File '{name}' is empty or unreadable.")
+
+        metadata = {"source": name, "filename": name, "file_type": ext.lstrip(".")}
         if extra_metadata:
             metadata.update(extra_metadata)
 
+        logger.info("file_loaded", filename=name, type=ext, chars=len(text))
         return self.ingest_texts([text], [metadata])
