@@ -9,7 +9,6 @@ A production-ready Retrieval-Augmented Generation (RAG) system that:
 - Exposes a clean **FastAPI** REST API with Pydantic validation
 - Structured JSON logging, health checks, request tracing, Docker support
 
----
 
 ## 📁 Project Structure
 
