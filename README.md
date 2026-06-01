@@ -228,3 +228,114 @@ All settings live in `.env`:
 | `LOG_LEVEL` | `INFO` | `DEBUG/INFO/WARNING/ERROR` |
 
 ---
+## 🔄 How It Works — Data Flow
+ 
+### 📥 Ingestion Pipeline (Upload a document)
+ 
+```
+User uploads PDF / DOCX / TXT
+           │
+           ▼
+ ┌─────────────────────┐
+ │  FastAPI             │  POST /api/v1/ingest/file
+ │  receives file       │  or  /api/v1/ingest/texts
+ └────────┬────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  pypdf / python-docx │  Extracts raw text from file
+ │  extracts raw text   │
+ └────────┬────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  LangChain           │  RecursiveCharacterTextSplitter
+ │  splits into chunks  │  chunk_size=512, overlap=64
+ └────────┬────────────┘
+          │
+          ▼
+ ┌──────────────────────────┐
+ │  HuggingFace (LOCAL)      │  sentence-transformers/all-MiniLM-L6-v2
+ │  converts chunk → vector  │  chunk text → [0.12, 0.87, -0.34, ...]
+ │  (free, runs on your CPU) │  384-dimensional embedding
+ └────────┬─────────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  ChromaDB            │  Stores chunk text + vector + metadata
+ │  persists to disk    │  saved in ./chroma_db folder
+ └─────────────────────┘
+```
+ 
+---
+ 
+### 💬 Query Pipeline (Ask a question)
+ 
+```
+User asks: "What does the document say about X?"
+           │
+           ▼
+ ┌─────────────────────┐
+ │  FastAPI             │  POST /api/v1/query/rag
+ │  receives question   │
+ └────────┬────────────┘
+          │
+          ▼
+ ┌──────────────────────────┐
+ │  HuggingFace (LOCAL)      │  Converts question → vector
+ │  embeds the question      │  same model as ingestion
+ └────────┬─────────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  ChromaDB            │  Finds top-k most similar chunks
+ │  MMR similarity      │  MMR = diverse, non-redundant results
+ │  search              │  returns chunk1, chunk2, chunk3, chunk4
+ └────────┬────────────┘
+          │
+          ▼
+ ┌──────────────────────────────────────────────┐
+ │  LangChain builds prompt                      │
+ │                                               │
+ │  System: "Answer using ONLY this context:     │
+ │           [chunk1] [chunk2] [chunk3] [chunk4]"│
+ │  Human:  "What does the document say about X?"│
+ └────────┬─────────────────────────────────────┘
+          │
+          ▼
+ ┌──────────────────────────┐
+ │  HuggingFace Inference    │  Sends prompt to Zephyr-7B / Mistral
+ │  API (LLM)                │  via https://router.huggingface.co/v1
+ │                           │  uses your HUGGINGFACEHUB_API_TOKEN
+ └────────┬─────────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  LLM returns         │  Grounded answer based only on
+ │  grounded answer     │  the retrieved chunks — no hallucination
+ └────────┬────────────┘
+          │
+          ▼
+ ┌─────────────────────┐
+ │  FastAPI returns     │  { "answer": "...",
+ │  JSON response       │    "sources": [chunk1, chunk2...],
+ │  to UI               │    "model_used": "zephyr-7b-beta" }
+ └─────────────────────┘
+```
+ 
+---
+ 
+## 🛠️ Tools Used
+ 
+| Tool | Role | Why |
+|---|---|---|
+| **FastAPI** | REST API layer | Auto Swagger UI, Pydantic validation, async |
+| **LangChain** | Orchestration | Connects splitter → embeddings → retriever → LLM |
+| **HuggingFace** | Embeddings + LLM | Free, open-source models, no credit card needed |
+| **ChromaDB** | Vector database | Local, persistent, metadata filtering, MMR search |
+| **pypdf** | PDF parsing | Extracts text from PDF files page by page |
+| **python-docx** | DOCX parsing | Extracts paragraphs from Word documents |
+| **structlog** | Logging | Structured JSON logs with request IDs |
+| **Pydantic** | Validation | Type-safe request/response models |
+| **Docker** | Containerization | Reproducible deployment anywhere |
+ 
