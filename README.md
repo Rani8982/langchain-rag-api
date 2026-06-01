@@ -55,7 +55,6 @@ rag_project/
 git clone <your-repo>
 cd rag_project
 
-cp .env.example .env
 # Edit .env and set:  HUGGINGFACEHUB_API_TOKEN=hf_your_token_here
 ```
 
