@@ -1,4 +1,4 @@
-# 🚀 Production RAG API
+# RAG API
 
 **LangChain + HuggingFace + ChromaDB + FastAPI**
 
@@ -18,9 +18,9 @@ rag_project/
 ├── app/
 │   ├── main.py                  # FastAPI app, middleware, lifespan
 │   ├── core/
-│   │   ├── config.py            # Pydantic settings (all from .env)
+│   │   ├── config.py            # Pydantic settings
 │   │   ├── logger.py            # Structured logging (structlog)
-│   │   ├── vector_store.py      # ChromaDB + HuggingFace embeddings (singleton)
+│   │   ├── vector_store.py      # ChromaDB + HuggingFace embeddings
 │   │   ├── ingestion.py         # Text splitter + ingest service
 │   │   └── rag_chain.py         # LCEL RAG chain (retriever → LLM)
 │   ├── api/routes/
@@ -42,9 +42,9 @@ rag_project/
 
 ---
 
-## ⚡ Quick Start
+##  Quick Start
 
-### 1. Get a HuggingFace API Token (free)
+### 1. Get a HuggingFace API Token 
 
 1. Go to https://huggingface.co/settings/tokens
 2. Click **New token** → choose **Read** role → copy the token
@@ -74,9 +74,6 @@ pip install -r requirements.txt
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-
-Open **http://localhost:8000/docs** for the interactive Swagger UI.
-
 ---
 
 ## 🐳 Docker
@@ -211,15 +208,13 @@ pytest tests/ -v
 # With coverage
 pytest tests/ -v --cov=app --cov-report=term-missing
 
-# Run a specific test
-pytest tests/test_api.py::test_rag_query -v
 ```
 
 ---
 
 ## ⚙️ Configuration Reference
 
-All settings live in `.env` (see `.env.example`):
+All settings live in `.env`:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -235,34 +230,3 @@ All settings live in `.env` (see `.env.example`):
 | `LOG_LEVEL` | `INFO` | `DEBUG/INFO/WARNING/ERROR` |
 
 ---
-
-## 🏗️ Production Checklist
-
-- [x] Environment-based config (no hardcoded secrets)
-- [x] Pydantic input validation
-- [x] Structured JSON logging with request IDs
-- [x] Global exception handler
-- [x] Health check endpoint
-- [x] Persistent vector store (survives restarts)
-- [x] MMR retrieval (diverse, non-redundant results)
-- [x] Metadata filtering
-- [x] Deterministic chunk IDs (idempotent re-ingestion)
-- [x] Dockerfile + docker-compose
-- [x] Unit + integration tests
-- [ ] Auth (add API key middleware for real deployments)
-- [ ] Rate limiting (add `slowapi` for production)
-- [ ] Swap Chroma → Pinecone/Weaviate for horizontal scale
-- [ ] Add Redis caching for repeated queries
-
----
-
-## 📡 API Endpoints Summary
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Root info |
-| GET | `/health/` | Health + vector store stats |
-| GET | `/docs` | Swagger UI |
-| POST | `/api/v1/ingest/texts` | Ingest text documents |
-| POST | `/api/v1/query/rag` | Ask a question (RAG) |
-| POST | `/api/v1/query/search` | Vector similarity search |
